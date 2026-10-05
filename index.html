@@ -69,6 +69,19 @@ h1{
     cursor:pointer;
 }
 
+.card img:focus-visible,
+.close:focus-visible{
+    outline:3px solid #3b82f6;
+    outline-offset:2px;
+}
+
+.empty{
+    grid-column:1/-1;
+    padding:30px;
+    text-align:center;
+    color:#666;
+}
+
 .product-name{
     font-size:18px;
     font-weight:bold;
@@ -107,6 +120,8 @@ h1{
     color:white;
     font-size:40px;
     cursor:pointer;
+    background:none;
+    border:0;
 }
 
 </style>
@@ -134,8 +149,8 @@ h1{
             Navn
         </option>
 
-        <option value="billede">
-            Billede
+        <option value="navn-desc">
+            Navn Ø–A
         </option>
 
     </select>
@@ -146,11 +161,11 @@ h1{
 
 <div class="grid" id="catalog"></div>
 
-<div class="modal" id="imageModal">
+<div class="modal" id="imageModal" role="dialog" aria-modal="true" aria-label="Billedvisning">
 
-    <span class="close">&times;</span>
+    <button type="button" class="close" aria-label="Luk">&times;</button>
 
-    <img id="modalImage">
+    <img id="modalImage" alt="">
 
 </div>
 
@@ -184,112 +199,120 @@ const produkter = [
 
 ];
 
+const PLACEHOLDER =
+    "data:image/svg+xml;utf8," +
+    encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="220" height="180">' +
+        '<rect width="100%" height="100%" fill="#e5e9ef"/>' +
+        '<text x="50%" y="50%" fill="#888" font-family="Arial" font-size="16" ' +
+        'text-anchor="middle" dominant-baseline="middle">Billede mangler</text></svg>'
+    );
+
+const modal = document.getElementById("imageModal");
+const modalImage = document.getElementById("modalImage");
+const closeButton = document.querySelector(".close");
+let lastFocused = null;
+
+function setFallback(img){
+    img.onerror = null;
+    img.src = PLACEHOLDER;
+}
+
 function renderProducts(){
 
-    const search =
-        document.getElementById("search")
-        .value
-        .toLowerCase();
+    const search = document.getElementById("search")
+        .value.trim().toLowerCase();
 
-    const sortField =
-        document.getElementById("sort")
-        .value;
+    const sortValue = document.getElementById("sort").value;
+    const descending = sortValue.endsWith("-desc");
+    const sortField = sortValue.replace("-desc", "");
 
     const filtered = produkter
         .filter(product =>
-
-            product.navn
-            .toLowerCase()
-            .includes(search)
-
-            ||
-
-            product.nummer
-            .toLowerCase()
-            .includes(search)
-
+            product.navn.toLowerCase().includes(search) ||
+            product.nummer.toLowerCase().includes(search)
         )
+        .sort((a,b)=>{
+            const result = a[sortField].localeCompare(
+                b[sortField], "da", {numeric:true}
+            );
+            return descending ? -result : result;
+        });
 
-        .sort((a,b)=>
-
-            a[sortField]
-            .localeCompare(
-                b[sortField],
-                undefined,
-                {numeric:true}
-            )
-
-        );
-
-    const catalog =
-        document.getElementById("catalog");
-
-    catalog.innerHTML = "";
+    const catalog = document.getElementById("catalog");
+    catalog.replaceChildren();
 
     filtered.forEach(product=>{
 
-        const card =
-            document.createElement("div");
+        const card = document.createElement("div");
+        card.className = "card";
 
-        card.className="card";
+        const img = document.createElement("img");
+        img.src = product.billede;
+        img.alt = product.navn;
+        img.tabIndex = 0;
+        img.setAttribute("role", "button");
+        img.onerror = () => setFallback(img);
+        img.addEventListener("click", () => showImage(img.src, product.navn));
+        img.addEventListener("keydown", e => {
+            if (e.key === "Enter" || e.key === " "){
+                e.preventDefault();
+                showImage(img.src, product.navn);
+            }
+        });
 
-        card.innerHTML = `
+        const name = document.createElement("div");
+        name.className = "product-name";
+        name.textContent = product.navn;
 
-            <img
-                src="${product.billede}"
-                onclick="showImage('${product.billede}')"
-                alt="${product.navn}"
-            >
+        const number = document.createElement("div");
+        number.className = "product-number";
+        number.textContent = "Produktnr: " + product.nummer;
 
-            <div class="product-name">
-                ${product.navn}
-            </div>
-
-            <div class="product-number">
-                Produktnr: ${product.nummer}
-            </div>
-
-        `;
-
+        card.append(img, name, number);
         catalog.appendChild(card);
 
     });
 
-    document.getElementById("counter")
-        .innerText =
-        "Viser " +
-        filtered.length +
-        " produkter";
+    if (filtered.length === 0){
+        const empty = document.createElement("p");
+        empty.className = "empty";
+        empty.textContent = "Ingen produkter fundet.";
+        catalog.appendChild(empty);
+    }
+
+    document.getElementById("counter").textContent =
+        "Viser " + filtered.length + " af " + produkter.length + " produkter";
 
 }
 
-function showImage(src){
-
-    document.getElementById("modalImage")
-        .src = src;
-
-    document.getElementById("imageModal")
-        .style.display = "block";
+function showImage(src, alt){
+    lastFocused = document.activeElement;
+    modalImage.onerror = () => setFallback(modalImage);
+    modalImage.src = src;
+    modalImage.alt = alt || "";
+    modal.style.display = "block";
+    closeButton.focus();
 }
 
-document.querySelector(".close")
-    .onclick = function(){
+function closeModal(){
+    if (modal.style.display !== "block") return;
+    modal.style.display = "none";
+    if (lastFocused) lastFocused.focus();
+}
 
-    document.getElementById("imageModal")
-        .style.display = "none";
-};
+closeButton.addEventListener("click", closeModal);
 
-document.getElementById("search")
-    .addEventListener(
-        "input",
-        renderProducts
-    );
+modal.addEventListener("click", e => {
+    if (e.target !== modalImage) closeModal();
+});
 
-document.getElementById("sort")
-    .addEventListener(
-        "change",
-        renderProducts
-    );
+document.addEventListener("keydown", e => {
+    if (e.key === "Escape") closeModal();
+});
+
+document.getElementById("search").addEventListener("input", renderProducts);
+document.getElementById("sort").addEventListener("change", renderProducts);
 
 renderProducts();
 
